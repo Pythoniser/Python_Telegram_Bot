@@ -3,6 +3,9 @@
 import requests
 import telebot
 import json
+import sqlite3 as sq
+import time
+#обработка запроса
 
 with open ('Secret_Token') as myfile:
     list_file=(myfile.readlines())
@@ -10,64 +13,80 @@ my_token = list_file [0]
 
 bot = telebot.TeleBot(my_token)
 
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    bot.send_message(message.chat.id, 'Привет, написал мне /start , у тебя получилось!')
 
-#bot.polling()
+failed_message = 'На данный момент курсы валют не доступны./nПопробуйте через 5 минут.'
+Adresses = []
+list_values_USD_in = []
+request_answer=False
+list_dict=[]
 
-@bot.message_handler(commands=['currency'])
-def start_message(message):
+while not (request_answer): # это на случай каких либо проблем с запросом
     try:
         r = requests.get('https://belarusbank.by/api/kursExchange')
         # присваиваем переменной полученные значения с сайта.
-
         list_dict = json.loads(r.text)  # применяем метод .text к r, а потом парсим методом json.loads в список словарей
-
-        list_values_USD_in = []
-        for i in range(len(list_dict)):  # создаем список значений по ключу USD_in пробегаясь по всем словарям
-            list_values_USD_in.append(list_dict[i]['USD_in'])  # добавляем значение по ключу словаря
-
-        # создаем пустой список, в котором будут индексы словарей из списка словарей, соответсвующие максимальным курсам USD_in
-        Max_USD_in_indexes = []
-        for i in range(len(list_values_USD_in)):
-            # сравниваем значение каждого элемента списка с максимальным значением из списка, в случае совпадения, добавляем в новый список индекс элемента
-            if list_values_USD_in[i] == max(list_values_USD_in):
-                Max_USD_in_indexes.append(i)
-
-        # keys = list(dict.keys(list_dict[i]))[41:34:-1]
-        keys_adress = ['name_type', 'name', 'home_number', 'filials_text', 'street', 'street_type']
-
-        Adresses = []
-        #    for i in Max_USD_in_indexes:
-        #        k = ' '.join(list(dict.values(list_dict[i]))[41:34:-1])  # преобразуем срез списка с конца по 34 элемент в строку
-        #        Adresses.append(k)  # добавляем в список новую строку из предыдущей операции
-
-        for i in Max_USD_in_indexes:
-            k = str()
-            for j in keys_adress:
-                k = k + list_dict[i][j] + ' '
-            Adresses.append(k)
-
-        # import pandas as pd
-        # pandas_adresses = pd.Series(Adresses)
-        # print ("Лучший курсы покупки USD -", max(list_values_USD_in))
-        # print ("Адрес отделения")
-        # print(pandas_adresses)
-        list_telebot_message = ['Лучший курс покупки USD Беларусбанком по стране -', max(list_values_USD_in)]
-
-        message_telebot = ' '.join(list_telebot_message)
-        join_Adresses = '\n'.join(Adresses)
-
-        # bot.send_message(message.chat.id, 'Лучший курсы покупки USD -', max(list_values_USD_in), 'Адрес отделения', pandas_adresses)
-        bot.send_message(message.chat.id, message_telebot)
-        bot.send_message(message.chat.id, 'отделения банков:')
-        bot.send_message(message.chat.id, join_Adresses)
-
+        request_answer = True
 
     except requests.ConnectionError:
-        bot.send_message(message.chat.id, 'На данный момент курсы валют не доступны.')
-        bot.send_message(message.chat.id, 'Попробуйте немного позже.')
+        @bot.message_handler(commands=['currency'])#не могу пока понять как сделать так, что бы в бот отправлялось сообщение "сервис недоступен".
+        def start_message(message):
+            bot.send_message(message.chat.id, 'Сервис не доступен, попробуйте через 5 минут')
+        time.sleep(1)
+        request_answer = False
+
+
+#код фильтрации request
+
+
+for i in range(len(list_dict)):  # создаем список значений по ключу USD_in пробегаясь по всем словарям
+    list_values_USD_in.append(list_dict[i]['USD_in'])  # добавляем значение по ключу словаря
+
+# создаем пустой список, в котором будут индексы словарей из списка словарей, соответсвующие максимальным курсам USD_in
+Max_USD_in_indexes = []
+for i in range(len(list_values_USD_in)):
+    # сравниваем значение каждого элемента списка с максимальным значением из списка, в случае совпадения, добавляем в новый список индекс элемента
+    if list_values_USD_in[i] == max(list_values_USD_in):
+        Max_USD_in_indexes.append(i)
+
+keys_adress = ['name_type', 'name', 'home_number', 'filials_text', 'street', 'street_type']
+
+for i in Max_USD_in_indexes:
+    k = str()
+    for j in keys_adress:
+        k = k + list_dict[i][j] + ' '
+    Adresses.append(k)
+
+list_telebot_message = ['Лучший курс покупки USD Беларусбанком по стране -', max(list_values_USD_in)]
+
+failed_message = 'На данный момент курсы валют не доступны./nПопробуйте через 5 минут.'
+
+# этап кэширования данных в SQL
+with sq.connect("currency_base.db") as con:
+    cur = con.cursor()  # cursor
+    cur.execute("DROP TABLE IF EXISTS currency_base")
+    cur.execute("""CREATE TABLE IF NOT EXISTS currency_base (
+       max_currency REAL,
+       adress TEXT
+       )""")
+    for i in Adresses:
+        cur.execute(f"INSERT INTO currency_base (max_currency, adress) VALUES ({max(list_values_USD_in)}, '{i}')")
+
+
+with sq.connect("currency_base.db") as con:
+    cur = con.cursor()
+    cur.execute("SELECT adress FROM currency_base")
+    result_adresses =cur.fetchall()
+
+
+
+# сам бот
+
+@bot.message_handler(commands=['currency'])
+def start_message(message):
+    bot.send_message(message.chat.id, f'Лучший курс покупки USD Беларусбанком по стране - {max(list_values_USD_in)}')
+    bot.send_message(message.chat.id, 'отделения банков:')
+    for i in result_adresses:
+        bot.send_message(message.chat.id,f'{i[0]}')
 
 bot.polling()
 

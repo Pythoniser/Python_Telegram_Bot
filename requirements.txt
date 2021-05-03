@@ -1,2 +1,4 @@
 pytelegrambotapi
 requests
+python-gettext
+pysqlite3
