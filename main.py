@@ -19,7 +19,7 @@ Adresses = []
 list_values_USD_in = []
 request_answer=False
 list_dict=[]
-
+n=0
 while not (request_answer): # это на случай каких либо проблем с запросом
     try:
         r = requests.get('https://belarusbank.by/api/kursExchange')
@@ -28,11 +28,16 @@ while not (request_answer): # это на случай каких либо пр�
         request_answer = True
 
     except requests.ConnectionError:
-        @bot.message_handler(commands=['currency'])#не могу пока понять как сделать так, что бы в бот отправлялось сообщение "сервис недоступен".
+        @bot.message_handler(commands=['currency'])#Решил проблему прописав еще один except прописав там bot.polling(). Цикл While обновляется.
         def start_message(message):
             bot.send_message(message.chat.id, 'Сервис не доступен, попробуйте через 5 минут')
         time.sleep(1)
+        n=n+1
+        print(n)
         request_answer = False
+
+    except requests.ConnectionError:
+        bot.polling()
 
 
 #код фильтрации request
